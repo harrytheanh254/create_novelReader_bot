@@ -1,102 +1,74 @@
-name: "Text to Speech (Piper - Ngoc Huyen)"
+name: Tao Audio Giong Ngoc Huyen
 
 on:
   workflow_dispatch:
     inputs:
-      source:
-        description: "Chọn nguồn văn bản"
+      voice_choice:
+        description: 'Chon giong doc'
         required: true
-        default: "Lấy từ file kichban.txt"
+        default: 'Piper - Ngoc Huyen'
         type: choice
         options:
-          - "Lấy từ file kichban.txt"
-          - "Nhập trực tiếp ở ô bên dưới"
-      text:
-        description: "Văn bản nhập trực tiếp (nếu không dùng file)"
-        required: false
-        default: "Xin chào các bạn, đây là giọng đọc Ngọc Huyền."
-        type: string
-      filename:
-        description: "Tên file âm thanh đầu ra"
+        - 'Piper - Ngoc Huyen'
+      speed_choice:
+        description: 'Chon toc do doc'
         required: true
-        default: "audio_ngoc_huyen"
-        type: string
-      speed:
-        description: "Chọn tốc độ đọc"
-        required: true
-        default: "1.0 (Bình thường)"
+        default: '+0% (Chuan 1.0x)'
         type: choice
         options:
-          - "0.8 (Đọc nhanh)"
-          - "1.0 (Bình thường)"
-          - "1.2 (Đọc chậm)"
-          - "1.5 (Đọc rất chậm)"
+        - '+0% (Chuan 1.0x)'
+        - '+25% (Nhanh 1.25x)'
+        - '+50% (Nhanh 1.5x)'
+        - '-20% (Cham 0.8x)'
 
 jobs:
   generate:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Lay ma nguon
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Cai dat Python
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
+      - name: Cai dat thu vien phu thuoc
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Lấy giá trị tốc độ
-        id: parse_speed
+      - name: Tao file audio WAV tu kichban.txt
         run: |
-          SELECTED="${{ github.event.inputs.speed }}"
-          if [[ "$SELECTED" == *"0.8"* ]]; then
-            echo "scale=0.8" >> $GITHUB_OUTPUT
-          elif [[ "$SELECTED" == *"1.2"* ]]; then
-            echo "scale=1.2" >> $GITHUB_OUTPUT
-          elif [[ "$SELECTED" == *"1.5"* ]]; then
-            echo "scale=1.5" >> $GITHUB_OUTPUT
+          SPEED="${{ github.event.inputs.speed_choice }}"
+          
+          # Quy doi toc do sang tham so length-scale cua Piper
+          if [[ "$SPEED" == *"+25%"* ]]; then
+            SCALE="0.8"
+          elif [[ "$SPEED" == *"+50%"* ]]; then
+            SCALE="0.67"
+          elif [[ "$SPEED" == *"-20%"* ]]; then
+            SCALE="1.25"
           else
-            echo "scale=1.0" >> $GITHUB_OUTPUT
+            SCALE="1.0"
           fi
 
-      - name: Xử lý văn bản và Tạo Audio
-        env:
-          INPUT_SOURCE: ${{ github.event.inputs.source }}
-          INPUT_TEXT: ${{ github.event.inputs.text }}
-          SPEED_SCALE: ${{ steps.parse_speed.outputs.scale }}
-          OUT_FILE: ${{ github.event.inputs.filename }}.wav
-        run: |
-          python -c '
-          import os, sys, subprocess
+          # Doc file kichban.txt an toan va tao file audio
+          python -c "
+          import subprocess
+          with open('kichban.txt', 'r', encoding='utf-8') as f:
+              text_content = f.read().strip()
+          
+          subprocess.run([
+              'python', 'synth.py',
+              '--text', text_content,
+              '--out', 'audio_youtube.wav',
+              '--length-scale', '$SCALE'
+          ], check=True)
+          "
 
-          source = os.environ.get("INPUT_SOURCE", "")
-          custom_text = os.environ.get("INPUT_TEXT", "")
-          scale = os.environ.get("SPEED_SCALE", "1.0")
-          out_file = os.environ.get("OUT_FILE", "audio.wav")
-
-          if "kichban.txt" in source:
-              if os.path.exists("kichban.txt"):
-                  with open("kichban.txt", "r", encoding="utf-8") as f:
-                      text_content = f.read().strip()
-              else:
-                  print("CẢNH BÁO: Không tìm thấy kichban.txt, chuyển sang đọc văn bản ô nhập.")
-                  text_content = custom_text
-          else:
-              text_content = custom_text
-
-          if not text_content:
-              print("LỖI: Nội dung văn bản trống!")
-              sys.exit(1)
-
-          subprocess.run(["python", "synth.py", "--text", text_content, "--out", out_file, "--length-scale", scale], check=True)
-          '
-
-      - name: Tải file về (Artifacts)
+      - name: Tai file WAV ve
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.event.inputs.filename }}
-          path: "${{ github.event.inputs.filename }}.wav"
+          name: audio-output
+          path: audio_youtube.wav
